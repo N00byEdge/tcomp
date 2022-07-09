@@ -1,0 +1,77 @@
+const buf_size: usize = 4096;
+
+var buf: [buf_size]u8 = undefined;
+var buf_usage: usize = 0;
+var current_buf_fd: i32 = 0;
+
+fn write(fd: i32, ptr: *u8, sz: u64) u64 {
+	return @syscall(1, fd, ptr, sz);
+}
+
+fn write_all(fd: i32, ptr: *u8, sz: u64) void {
+	loop {
+		if(sz == 0) return;
+
+		const written = write(fd, ptr, sz);
+		ptr += written;
+		sz -= written;
+	}
+}
+
+fn flush() void {
+	if(buf_usage > 0) {
+		write_all(current_buf_fd, buf.&, buf_usage);
+		buf_usage = 0;
+	}
+}
+
+fn putch_fd_buf(fd: i32, ch: u8) void {
+	if(current_buf_fd != fd) {
+		flush();
+		current_buf_fd = fd;
+	} else if(buf_usage == buf_size) {
+		flush();
+	}
+	buf[buf_usage] = ch;
+	buf_usage += 1;
+}
+
+fn atexit_hook() void {
+	if(buf_usage > 0) flush();
+}
+
+fn exit(exit_code: u8) void {
+	atexit_hook();
+	@syscall(60, exit_code);
+}
+
+const stdin: i32 = 0;
+const stdout: i32 = 1;
+const stderr: i32 = 2;
+
+const flush_on_newline: bool = false;
+
+fn putch(ch: u8) void {
+	putch_fd_buf(stdout, ch);
+	if(flush_on_newline) {
+		if(ch == '\n') {
+			flush();
+		}
+	}
+}
+
+fn puts(str: *u8) void {
+	loop {
+		if(!str.*) {
+			putch('\n');
+			return;
+		}
+		putch(str.*);
+		str += 1;
+	}
+}
+
+fn main(argc: u64, argv: **u8) u8 {
+	puts("Hello, world!".&);
+	return 0;
+}
